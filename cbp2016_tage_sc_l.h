@@ -47,7 +47,7 @@
 #define LOOPTAG 10             // Tag width for loop predictor
 
 // RL Policy Network Parameters
-#define INPUT_SIZE 16        // Increased to include Loop Predictor features
+#define INPUT_SIZE 12        // Increased to include Loop Predictor features
 #define HIDDEN_SIZE1 32      // Larger hidden layer for better capacity
 #define HIDDEN_SIZE2 16
 #define OUTPUT_SIZE 1        // Binary output (flip or no-flip)
@@ -189,7 +189,7 @@ public:
 
     // History and Tables
     cbp_hist_t active_hist;                                    // Current history
-    std::unordered_map<uint64_t, std::pair<cbp_hist_t, RLState>> pred_time_histories; // Checkpointed history and state
+    std::unordered_map<uint64_t, std::tuple<cbp_hist_t, RLState,bool>> pred_time_histories; // Checkpointed history and state
     bentry *btable;                                            // Bimodal table
     gentry *gtable[NHIST + 1];                                 // Tagged tables
     lentry *ltable;                                            // Loop table
@@ -469,8 +469,9 @@ public:
 
     // Main Prediction Function
     bool predict(uint64_t seq_no, uint8_t piece, UINT64 PC) {
-    pred_time_histories.emplace(get_unique_inst_id(seq_no, piece), std::make_pair(active_hist, compute_state(PC, active_hist)));
-    return predict_using_given_hist(seq_no, piece, PC, active_hist, true);
+    bool pred_taken =  predict_using_given_hist(seq_no, piece, PC, active_hist, true);
+    pred_time_histories.emplace(get_unique_inst_id(seq_no, piece), std::make_tuple(active_hist, pred_state, pred_taken));
+    return pred_taken;
     }
 
     // Prediction with Given History
@@ -544,10 +545,10 @@ public:
     
         const auto pred_hist_key = get_unique_inst_id(seq_no, piece);  // Assumed function
         const auto& entry = pred_time_histories.at(pred_hist_key);
-        const auto& pred_time_history = entry.first;
-        const auto& pred_time_state = entry.second;
+        const auto& pred_time_history = std::get<0>(entry);
+        const auto& pred_time_state = std::get<1>(entry);
+        const bool pred_taken = std::get<2>(entry);
         
-        const bool pred_taken = predict_using_given_hist(seq_no, piece, PC, pred_time_history, false);
   float reward;
   if (pred_taken == resolveDir) {
       reward = HighConf ? 1.0f : 0.5f;  // Reward based on confidence
